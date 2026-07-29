@@ -1,0 +1,7 @@
+# Your art and the generated deliverables stay local.
+input/*
+!input/.gitkeep
+output/
+
+__pycache__/
+*.pyc
