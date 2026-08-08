@@ -1,0 +1,11 @@
+# Python bytecode and test caches — build artifacts, never source.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Local secrets. backend/data/fmp_client.py takes an API key; keep it out of git.
+.env
