@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "project-graveyard": {
+      "source": "Shubhamsaboo/awesome-llm-apps",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "agent_skills/project-graveyard/SKILL.md",
+      "computedHash": "ea8e195b66e66afd21ebd8a73438f3d106e966054af81c0a308e7bfcb8d4d76e"
+    }
+  }
+}
