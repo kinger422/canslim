@@ -14,11 +14,14 @@ and "target" mean for a binary contract (there's no leverage; max loss is the pr
 
 ## Why the pieces are shaped this way
 
-**5% risk, not 5% of account in general.** Kalshi contracts can't lose more than what you paid
-for them (no margin calls, no leverage). So "risk 5% of free balance" is just "spend at most 5%
-of free balance on contracts" — `scripts/position_sizer.py` divides the risk budget by the entry
-price and floors it to a whole contract count. This is deliberately the simplest correct version
-of position sizing; don't overcomplicate it with Kelly criterion or similar unless the user asks.
+**5% risk, fees included, one trade at a time.** Kalshi contracts can't lose more than what you
+paid for them (no margin calls, no leverage), so "risk 5% of free balance" means the total debit
+— premium **plus** Kalshi's taker fee on the entry and a reserved fee for an early exit — stays
+inside 5% of free balance. `scripts/position_sizer.py` does that arithmetic and floors to a
+whole contract count; `run_trade.py` additionally caps size at the book depth near the ask,
+refuses `--risk-fraction` above 0.05 without an explicit override flag, holds an exclusive lock
+so two runs can't each take 5% of the same balance, and refuses to enter a market it already
+holds. Don't overcomplicate the sizing with Kelly criterion or similar unless the user asks.
 
 **The stop widens with volatility and tightens with time.** A fixed-cents stop either gets you
 stopped out by normal noise in a choppy market, or exposes you to too much slippage in a quiet
@@ -50,12 +53,21 @@ target is never reached.
 
 3. **Run the live trade** once the dry run looks right, by dropping `--dry-run` (and `--demo` if
    the user wants production, which is the default). `run_trade.py`:
-   - Pulls free balance and the current ask, sizes the position at 5% risk
-     (`position_sizer.size_trade`), and places the entry limit order.
-   - Polls the market every `--poll-seconds` (default 3s) and feeds each quote into
+   - Checks the market is active and derives the trade window from the market's actual
+     `close_time` (with a safety buffer), aborting if too little tradeable time remains.
+   - Pulls free balance and the current ask, sizes the position at 5% risk fee-inclusive
+     (`position_sizer.size_trade`), caps it at book depth, and places the entry limit order —
+     then **verifies the fill**, cancels any unfilled remainder, and manages only the
+     contracts actually held (an assumed fill is how a bot ends up selling what it doesn't own).
+   - Polls the market every `--poll-seconds` (default 3s) and feeds each valid quote into
      `stop_target.TradeState.update`, which returns `hold` (with the current stop/target levels)
      or `exit` (with a reason: `stop_loss`, `trailing_stop`, `target_hit`, or `window_expired`).
-   - Places the opposing (sell) order the moment an `exit` fires.
+     Transient API errors are retried with backoff; persistent failure forces an emergency exit
+     rather than dying with an open position.
+   - On exit, runs a **flatten loop**: sells at a fresh bid (priced through the bid on stop
+     exits so the order crosses), verifies the fill, and cancels/re-places lower until
+     `GET /portfolio/positions` confirms the position is flat — a stop that fires one resting
+     limit order and walks away is not a stop.
 
 4. **Report the outcome plainly**: entry price and size, exit reason, exit price, realized P&L in
    cents. If something looks off mid-trade (repeated `hold` near expiry with no clear stop/target

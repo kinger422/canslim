@@ -16,8 +16,9 @@ import json
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
-DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
+PROD_HOST = "https://api.elections.kalshi.com"
+DEMO_HOST = "https://demo-api.kalshi.co"
+API_PREFIX = "/trade-api/v2"
 
 
 def _load_private_key():
@@ -36,16 +37,20 @@ def _load_private_key():
 
 
 class KalshiClient:
-    def __init__(self, demo=False):
-        self.base = DEMO_BASE if demo else PROD_BASE
+    def __init__(self, demo=False, timeout=10):
+        self.host = DEMO_HOST if demo else PROD_HOST
+        self.timeout = timeout
         self.key_id = os.environ.get("KALSHI_API_KEY_ID")
         if not self.key_id:
             raise RuntimeError("Set KALSHI_API_KEY_ID.")
         self.private_key = _load_private_key()
 
-    def _sign(self, method, path):
+    def _sign(self, method, full_path):
+        # Kalshi verifies the signature against the FULL request path including the
+        # /trade-api/v2 prefix (and excluding any query string) — signing the short
+        # path 401s every call.
         ts = str(int(time.time() * 1000))
-        message = (ts + method.upper() + path).encode()
+        message = (ts + method.upper() + full_path).encode()
         signature = self.private_key.sign(
             message,
             padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH),
@@ -58,13 +63,14 @@ class KalshiClient:
         }
 
     def request(self, method, path, body=None):
-        url = self.base + path
-        headers = self._sign(method, path)
+        full_path = API_PREFIX + path
+        url = self.host + full_path
+        headers = self._sign(method, full_path)
         headers["Content-Type"] = "application/json"
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode() or "{}")
         except urllib.error.HTTPError as e:
             raise RuntimeError(f"{method} {path} -> {e.code}: {e.read().decode()}")
@@ -90,8 +96,18 @@ class KalshiClient:
         }
         return self.request("POST", "/portfolio/orders", body)
 
+    def get_order(self, order_id):
+        return self.request("GET", f"/portfolio/orders/{order_id}")["order"]
+
     def cancel_order(self, order_id):
         return self.request("DELETE", f"/portfolio/orders/{order_id}")
 
     def get_positions(self):
         return self.request("GET", "/portfolio/positions")["market_positions"]
+
+    def position_count(self, ticker):
+        """Net contracts held in a market (positive = long the yes side on Kalshi's convention)."""
+        for p in self.get_positions():
+            if p.get("ticker") == ticker:
+                return abs(p.get("position", 0))
+        return 0
