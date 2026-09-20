@@ -1,0 +1,330 @@
+<title>Scalper Console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --ink:#1c2530; --ink-2:#51606f; --ink-3:#8494a4;
+  --line:#dde4ea; --accent:#2b7d9c; --price:#2b7d9c;
+  --good:#2e7d40; --bad:#c03a3e; --warn:#a06a1b;
+  --good-bg:#e5f2e8; --bad-bg:#f9e7e7; --warn-bg:#f6edda; --chip:#e8edf2;
+  --grid:#e6ebf0; --tooltip-bg:#1c2530; --tooltip-ink:#f5f7f9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12161b; --surface:#1a2028; --ink:#e6ecf2; --ink-2:#9fadbb; --ink-3:#6b7a89;
+    --line:#2a333e; --accent:#58b8d8; --price:#58b8d8;
+    --good:#66c07d; --bad:#e0666a; --warn:#d9a04a;
+    --good-bg:#1d2d22; --bad-bg:#342022; --warn-bg:#322a1a; --chip:#242d37;
+    --grid:#222b34; --tooltip-bg:#e6ecf2; --tooltip-ink:#12161b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12161b; --surface:#1a2028; --ink:#e6ecf2; --ink-2:#9fadbb; --ink-3:#6b7a89;
+  --line:#2a333e; --accent:#58b8d8; --price:#58b8d8;
+  --good:#66c07d; --bad:#e0666a; --warn:#d9a04a;
+  --good-bg:#1d2d22; --bad-bg:#342022; --warn-bg:#322a1a; --chip:#242d37;
+  --grid:#222b34; --tooltip-bg:#e6ecf2; --tooltip-ink:#12161b;
+}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:14px; line-height:1.45;
+  padding-inline:16px; padding-block:16px; max-width:980px; margin:0 auto;
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums}
+header{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin-bottom:14px}
+h1{font-size:19px; font-weight:600; margin:0; letter-spacing:-.01em; text-wrap:balance}
+.ticker{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink-2)}
+.pill{display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600;
+  letter-spacing:.04em; text-transform:uppercase; background:var(--chip); color:var(--ink-2)}
+.pill.good{background:var(--good-bg); color:var(--good)}
+.pill.bad{background:var(--bad-bg); color:var(--bad)}
+.pill.warn{background:var(--warn-bg); color:var(--warn)}
+#drop{margin-left:auto; border:1.5px dashed var(--line); border-radius:8px; padding:6px 12px;
+  font-size:12px; color:var(--ink-3); cursor:pointer; background:var(--surface)}
+#drop.over{border-color:var(--accent); color:var(--accent)}
+#drop input{display:none}
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:14px}
+.tile{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:10px 12px}
+.tile .k{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3); margin-bottom:2px}
+.tile .v{font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:500; font-variant-numeric:tabular-nums}
+.tile .v small{font-size:12px; color:var(--ink-3); font-weight:400}
+.tile.pnl .v.up{color:var(--good)} .tile.pnl .v.down{color:var(--bad)}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px}
+.panel h2{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3);
+  font-weight:600; margin:0 0 10px}
+#chartwrap{position:relative}
+#chart{width:100%; height:auto; display:block}
+#tip{position:absolute; pointer-events:none; background:var(--tooltip-bg); color:var(--tooltip-ink);
+  border-radius:6px; padding:6px 9px; font-size:12px; display:none; white-space:nowrap; z-index:2}
+.legend{display:flex; flex-wrap:wrap; gap:14px; margin-top:8px; font-size:12px; color:var(--ink-2)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.legend svg{flex:none}
+.tablewrap{overflow-x:auto; max-height:260px; overflow-y:auto}
+table{border-collapse:collapse; width:100%; font-size:12.5px}
+th{position:sticky; top:0; background:var(--surface); text-align:left; font-size:11px;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--ink-3); font-weight:600;
+  padding:4px 10px 6px; border-bottom:1px solid var(--line)}
+td{padding:4px 10px; border-bottom:1px solid var(--grid); color:var(--ink-2); white-space:nowrap}
+td.ev{color:var(--ink); font-weight:500}
+tr.exit td.ev{color:var(--bad)} tr.entry td.ev{color:var(--good)}
+.note{font-size:12px; color:var(--ink-3); margin-top:6px}
+@media (prefers-reduced-motion: no-preference){ .tile{transition:border-color .15s} }
+</style>
+
+<header>
+  <div>
+    <h1>Scalper Console</h1>
+    <div class="ticker" id="meta">—</div>
+  </div>
+  <span class="pill" id="sidePill">—</span>
+  <span class="pill" id="statusPill">—</span>
+  <span class="pill warn" id="capPill" hidden>capitulation</span>
+  <label id="drop">Drop trade_log.jsonl here — or click to browse<input type="file" id="file" accept=".jsonl,.json,.txt"></label>
+</header>
+
+<div class="tiles">
+  <div class="tile"><div class="k">Entry</div><div class="v" id="tEntry">—</div></div>
+  <div class="tile"><div class="k">Contracts</div><div class="v" id="tHeld">—</div></div>
+  <div class="tile"><div class="k">Last price</div><div class="v" id="tLast">—</div></div>
+  <div class="tile pnl"><div class="k" id="tPnlLabel">P&amp;L</div><div class="v" id="tPnl">—</div></div>
+  <div class="tile"><div class="k">Stop</div><div class="v" id="tStop">—</div></div>
+  <div class="tile"><div class="k">Target</div><div class="v" id="tTarget">—</div></div>
+</div>
+
+<div class="panel">
+  <h2 id="chartTitle">Price vs. levels</h2>
+  <div id="chartwrap">
+    <svg id="chart" viewBox="0 0 900 320" role="img" aria-label="Price with stop and target levels over the trade window"></svg>
+    <div id="tip" class="mono"></div>
+  </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div class="panel">
+  <h2>Decision log</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Time</th><th>Event</th><th>Price</th><th>Stop</th><th>Target</th><th>Detail</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+  <div class="note" id="srcNote"></div>
+</div>
+
+<script>
+"use strict";
+// Sample trade (clearly labeled): yes @ 47c, capitulation run to 63, trailing-stop exit.
+const SAMPLE = (() => {
+  const t0 = 1758300000, ev = [];
+  ev.push({kind:"trade_start", ts:t0, ticker:"KXBTCUSD-26SEP19-T117250", side:"yes", demo:false, dry_run:false,
+    entry_price:47, contracts:10, cost_cents:470, entry_fee_cents:18, reserved_exit_fee_cents:18,
+    risk_budget_cents:520, max_loss_cents:506, free_balance_cents:10400});
+  ev.push({kind:"entry", ts:t0+8, held:10, entry_price:47});
+  const px =  [47,47,46,47,48,48,49,51,54,57,60,62,63,62,61,61,60,59,60,59,58];
+  const st =  [44,44,44,44,44,44,44,44,44,44,44,44,44,44,44,44,44,44,44,44,44];
+  const tr =  [null,null,null,null,null,null,null,49,52,55,58,60,61,61,61,61,61,61,61,61,61];
+  const tg =  [51,51,51,51,51,51,51,59,62,65,68,70,71,71,71,71,71,71,71,71,71];
+  const cap = px.map((_,i)=> i>=7);
+  px.forEach((p,i)=>{
+    const stop = tr[i]!==null ? Math.max(st[i],tr[i]) : st[i];
+    if (p<=stop){ ev.push({kind:"tick", ts:t0+10+i*3, price:p, action:"exit", reason:"trailing_stop", stop, target:tg[i]}); }
+    else ev.push({kind:"tick", ts:t0+10+i*3, price:p, action:"hold", stop, target:tg[i],
+      time_remaining_frac:+(1-(10+i*3)/900).toFixed(3), capitulation:cap[i]});
+  });
+  ev.push({kind:"exit_signal", ts:t0+10+20*3, reason:"trailing_stop", held:10});
+  ev.push({kind:"done", ts:t0+10+20*3+4, flat:true, net_cents:+112});
+  return ev;
+})();
+
+const $ = id => document.getElementById(id);
+const C = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+let events = SAMPLE, isSample = true;
+
+function parseJsonl(text){
+  const out = [];
+  for (const line of text.split(/\r?\n/)){
+    const s = line.trim(); if (!s) continue;
+    try { out.push(JSON.parse(s)); } catch(e){ /* skip malformed line */ }
+  }
+  return out;
+}
+
+function fmtC(v){ return v==null ? "—" : (Math.round(v*10)/10) + "¢"; }
+function fmtT(ts, t0){ const d = Math.round(ts - t0); return Math.floor(d/60)+":"+String(d%60).padStart(2,"0"); }
+
+function render(){
+  const start = events.find(e=>e.kind==="trade_start") || {};
+  const entryEv = events.find(e=>e.kind==="entry");
+  const ticks = events.filter(e=>e.kind==="tick" && typeof e.price==="number");
+  const exitEv = events.find(e=>e.kind==="exit_signal");
+  const doneEv = events.find(e=>e.kind==="done");
+  const t0 = (events[0]||{}).ts || 0;
+  const entry = (entryEv && entryEv.entry_price) || start.entry_price;
+  const held = (entryEv && entryEv.held) || start.contracts;
+  const last = ticks.length ? ticks[ticks.length-1] : null;
+
+  $("meta").textContent = (start.ticker || "no trade loaded") +
+    (start.demo ? " · demo" : "") + (start.dry_run ? " · dry-run" : "");
+  const sp = $("sidePill");
+  sp.textContent = start.side ? start.side.toUpperCase() : "—";
+  sp.className = "pill " + (start.side==="yes" ? "good" : start.side==="no" ? "bad" : "");
+  const st = $("statusPill");
+  if (doneEv){ st.textContent = doneEv.flat ? "flat" : "NOT FLAT"; st.className = "pill " + (doneEv.flat ? "" : "bad"); }
+  else if (exitEv){ st.textContent = exitEv.reason.replace(/_/g," "); st.className = "pill bad"; }
+  else if (last){ st.textContent = "live · holding"; st.className = "pill good"; }
+  else { st.textContent = "no ticks"; st.className = "pill"; }
+  $("capPill").hidden = !(last && last.capitulation);
+
+  $("tEntry").textContent = fmtC(entry);
+  $("tHeld").textContent = held!=null ? held : "—";
+  $("tLast").textContent = last ? fmtC(last.price) : "—";
+  $("tStop").textContent = last ? fmtC(last.stop) : "—";
+  $("tTarget").textContent = last ? fmtC(last.target) : "—";
+  const pnlEl = $("tPnl");
+  if (doneEv && typeof doneEv.net_cents==="number"){
+    $("tPnlLabel").textContent = "Realized P&L";
+    pnlEl.textContent = (doneEv.net_cents>=0?"+":"") + doneEv.net_cents + "¢";
+    pnlEl.className = "v " + (doneEv.net_cents>=0 ? "up" : "down");
+  } else if (last && entry!=null && held!=null){
+    const u = Math.round((last.price-entry)*held);
+    $("tPnlLabel").textContent = "Unrealized P&L";
+    pnlEl.textContent = (u>=0?"+":"") + u + "¢";
+    pnlEl.className = "v " + (u>=0 ? "up" : "down");
+  } else { pnlEl.textContent = "—"; pnlEl.className = "v"; }
+
+  drawChart(ticks, entry, t0, exitEv);
+  drawTable(t0);
+  $("srcNote").textContent = isSample
+    ? "Showing a built-in sample trade. Drop your own trade_log.jsonl (written by run_trade.py) to replay a real one."
+    : "Loaded " + events.length + " events from your log.";
+}
+
+let chartTicks = [], chartGeom = null;
+function drawChart(ticks, entry, t0, exitEv){
+  const svg = $("chart"); svg.innerHTML = ""; chartTicks = ticks;
+  const W=900, H=320, L=44, R=76, T=16, B=30, iw=W-L-R, ih=H-T-B;
+  if (!ticks.length){
+    const tx = document.createElementNS("http://www.w3.org/2000/svg","text");
+    tx.setAttribute("x", W/2); tx.setAttribute("y", H/2); tx.setAttribute("text-anchor","middle");
+    tx.setAttribute("fill", C("--ink-3")); tx.setAttribute("font-size","13");
+    tx.textContent = "No tick data in this log."; svg.appendChild(tx); return;
+  }
+  const vals = [];
+  ticks.forEach(k=>{ vals.push(k.price); if(k.stop!=null)vals.push(k.stop); if(k.target!=null)vals.push(k.target); });
+  if (entry!=null) vals.push(entry);
+  let lo = Math.max(0, Math.floor(Math.min(...vals))-2), hi = Math.min(100, Math.ceil(Math.max(...vals))+2);
+  const ts0 = ticks[0].ts, ts1 = ticks[ticks.length-1].ts || ts0+1;
+  const X = t => L + (t-ts0)/((ts1-ts0)||1)*iw;
+  const Y = v => T + (hi-v)/((hi-lo)||1)*ih;
+  chartGeom = {X,Y,L,R,T,B,W,H,ts0,ts1,lo,hi};
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (n,a)=>{ const e=document.createElementNS(NS,n); for(const k in a)e.setAttribute(k,a[k]); svg.appendChild(e); return e; };
+  // grid + y labels (5 steps)
+  for (let i=0;i<=4;i++){
+    const v = lo + (hi-lo)*i/4, y = Y(v);
+    el("line",{x1:L,y1:y,x2:W-R,y2:y,stroke:C("--grid"),"stroke-width":1});
+    const t = el("text",{x:L-8,y:y+4,"text-anchor":"end",fill:C("--ink-3"),"font-size":11,
+      "font-family":"'IBM Plex Mono',monospace"}); t.textContent = Math.round(v)+"¢";
+  }
+  // x labels: start / mid / end (mm:ss into trade)
+  [ts0,(ts0+ts1)/2,ts1].forEach((t,i)=>{
+    const tx = el("text",{x:X(t),y:H-8,"text-anchor":i===0?"start":i===2?"end":"middle",
+      fill:C("--ink-3"),"font-size":11,"font-family":"'IBM Plex Mono',monospace"});
+    tx.textContent = fmtT(t,t0);
+  });
+  const path = (pts,stroke,dash,w)=> el("path",{d:pts,fill:"none",stroke,"stroke-width":w||2,
+    "stroke-linejoin":"round","stroke-linecap":"round",...(dash?{"stroke-dasharray":dash}:{})});
+  const line = (key,stroke,dash)=>{
+    let d="",pen=false;
+    ticks.forEach(k=>{ const v=k[key];
+      if (v==null){ pen=false; return; }
+      d += (pen?"L":"M")+X(k.ts).toFixed(1)+" "+Y(v).toFixed(1)+" "; pen=true; });
+    if (d) path(d,stroke,dash);
+  };
+  if (entry!=null) el("line",{x1:L,y1:Y(entry),x2:W-R,y2:Y(entry),stroke:C("--ink-3"),
+    "stroke-width":1,"stroke-dasharray":"1 4"});
+  line("stop",   C("--bad"));            // solid red
+  line("target", C("--good"), "6 4");    // dashed green
+  line("price",  C("--price"), null);
+  // last-point emphasis + exit marker
+  const lastK = ticks[ticks.length-1];
+  el("circle",{cx:X(lastK.ts),cy:Y(lastK.price),r:4,fill:C("--price"),stroke:C("--surface"),"stroke-width":2});
+  if (exitEv) el("circle",{cx:X(lastK.ts),cy:Y(lastK.price),r:8,fill:"none",stroke:C("--bad"),"stroke-width":1.5});
+  // direct labels at right edge
+  const label = (v,txt,color)=>{ if(v==null)return;
+    const t = el("text",{x:W-R+8,y:Y(v)+4,fill:color,"font-size":11,"font-weight":600,
+      "font-family":"'IBM Plex Sans',sans-serif"}); t.textContent = txt; };
+  label(lastK.price,"PRICE",C("--price"));
+  label(lastK.stop,"STOP",C("--bad"));
+  label(lastK.target,"TARGET",C("--good"));
+  if (entry!=null) label(entry,"entry",C("--ink-3"));
+  // legend (line-style + label, identity not color-alone)
+  $("legend").innerHTML =
+    '<span><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="'+C("--price")+'" stroke-width="2.5"/></svg>price</span>'+
+    '<span><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="'+C("--bad")+'" stroke-width="2.5"/></svg>stop (incl. trail)</span>'+
+    '<span><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="'+C("--good")+'" stroke-width="2.5" stroke-dasharray="5 3"/></svg>target</span>'+
+    '<span><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="'+C("--ink-3")+'" stroke-width="1.5" stroke-dasharray="1 4"/></svg>entry</span>';
+}
+
+// crosshair tooltip
+const tip = $("tip"), wrap = $("chartwrap"), svgEl = $("chart");
+svgEl.addEventListener("mousemove", e=>{
+  if (!chartGeom || !chartTicks.length) return;
+  const r = svgEl.getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width * 900;
+  let best = chartTicks[0], bd = Infinity;
+  for (const k of chartTicks){ const d = Math.abs(chartGeom.X(k.ts)-fx); if (d<bd){bd=d;best=k;} }
+  const t0 = (events[0]||{}).ts || 0;
+  tip.innerHTML = fmtT(best.ts,t0)+" · "+fmtC(best.price)+
+    "<br>stop "+fmtC(best.stop)+" · tgt "+fmtC(best.target)+
+    (best.capitulation ? " · <b>capitulation</b>" : "");
+  tip.style.display = "block";
+  const px = chartGeom.X(best.ts)/900 * r.width;
+  tip.style.left = Math.min(px+10, r.width-150)+"px";
+  tip.style.top = "8px";
+});
+svgEl.addEventListener("mouseleave", ()=> tip.style.display="none");
+
+function drawTable(t0){
+  const body = $("logBody"); body.innerHTML = "";
+  const rows = events.slice(-200);
+  for (const e of rows){
+    const tr = document.createElement("tr");
+    tr.className = e.kind==="exit_signal"||e.action==="exit" ? "exit" : e.kind==="entry" ? "entry" : "";
+    const detail = e.kind==="tick"
+      ? (e.action==="exit" ? "exit: "+e.reason : (e.capitulation?"capitulation · ":"")+
+         (e.time_remaining_frac!=null ? Math.round(e.time_remaining_frac*100)+"% left":""))
+      : e.kind==="trade_start" ? (e.contracts+" @ "+fmtC(e.entry_price)+" · budget "+e.risk_budget_cents+"¢")
+      : e.kind==="entry" ? ("holding "+e.held)
+      : e.kind==="exit_signal" ? e.reason
+      : e.kind==="done" ? (e.flat ? ("flat"+(e.net_cents!=null?" · net "+(e.net_cents>=0?"+":"")+e.net_cents+"¢":"")) : "NOT FLAT")
+      : "";
+    tr.innerHTML = '<td class="mono">'+fmtT(e.ts,t0)+'</td><td class="ev">'+
+      (e.kind==="tick"?(e.action==="exit"?"exit":"tick"):e.kind.replace(/_/g," "))+
+      '</td><td class="mono">'+fmtC(e.price)+'</td><td class="mono">'+fmtC(e.stop)+
+      '</td><td class="mono">'+fmtC(e.target)+'</td><td>'+detail+"</td>";
+    body.appendChild(tr);
+  }
+}
+
+function load(text){
+  const parsed = parseJsonl(text);
+  if (!parsed.length){ $("srcNote").textContent = "That file had no readable JSON lines — expected run_trade.py's trade_log.jsonl."; return; }
+  events = parsed; isSample = false; render();
+}
+$("file").addEventListener("change", e=>{
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(load);
+});
+const drop = $("drop");
+["dragover","dragenter"].forEach(ev=> drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=> drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.remove("over");}));
+drop.addEventListener("drop", e=>{
+  const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) f.text().then(load);
+});
+document.body.addEventListener("dragover", e=>e.preventDefault());
+document.body.addEventListener("drop", e=>{ e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) f.text().then(load); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+
+render();
+</script>
