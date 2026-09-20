@@ -13,6 +13,7 @@ even against --demo, since it also verifies the sizing/stop/target math before a
 """
 import argparse
 import fcntl
+import json
 import os
 import sys
 import time
@@ -30,6 +31,22 @@ EXIT_REPRICE_AFTER_S = 4.0      # how long an exit limit may rest before cancel 
 EXIT_MAX_ROUNDS = 8             # cancel/re-place rounds before giving up loudly
 MAX_CONSECUTIVE_POLL_FAILURES = 10
 LOCK_PATH = os.path.expanduser("~/.kalshi_5pct_trade.lock")
+
+
+LOG_FILE = None
+
+
+def log_event(kind, **data):
+    """Append one JSON line per event so the dashboard (assets/dashboard.html)
+    can replay the trade — ticks, levels, fills, exits — from the log alone."""
+    if LOG_FILE is None:
+        return
+    data.update({"kind": kind, "ts": time.time()})
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(json.dumps(data) + "\n")
+    except OSError as e:
+        print(f"[warn] could not write log: {e}")
 
 
 def valid_quote(v, lo=1, hi=99):
@@ -128,7 +145,12 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="compute and log decisions, place no orders")
     p.add_argument("--risk-fraction", type=float, default=0.05)
     p.add_argument("--allow-risk-above-5pct", action="store_true")
+    p.add_argument("--log-file", default="trade_log.jsonl",
+                   help="JSONL event log for assets/dashboard.html ('' disables)")
     args = p.parse_args()
+
+    global LOG_FILE
+    LOG_FILE = args.log_file or None
 
     if not (0 < args.risk_fraction <= 1.0):
         sys.exit("--risk-fraction must be in (0, 1] (0.05 = 5%)")
@@ -174,6 +196,8 @@ def main():
 
     sizing = size_trade(balance, entry_price, args.risk_fraction)
     print(f"[size] balance={balance}c risk_fraction={args.risk_fraction} -> {sizing}")
+    log_event("trade_start", ticker=args.ticker, side=args.side, demo=args.demo,
+              dry_run=args.dry_run, entry_price=entry_price, **sizing)
     if sizing["contracts"] <= 0:
         sys.exit("Free balance too small for even 1 contract at this risk fraction.")
 
@@ -201,6 +225,7 @@ def main():
         if held == 0:
             sys.exit("Entry never filled; nothing to manage. Done.")
         print(f"[entry] holding {held} {args.side} @ ~{entry_price}c")
+    log_event("entry", held=held, entry_price=entry_price)
 
     state = TradeState(
         side=args.side,
@@ -237,16 +262,22 @@ def main():
             break
         result = state.update(time.time(), price)
         print(f"[tick] price={price}c -> {result}")
+        log_event("tick", price=price, **{k: v for k, v in result.items() if k != "price"})
         if result["action"] == "exit":
             break
 
     reason = result["reason"]
     aggressive = reason in ("stop_loss", "trailing_stop", "window_expired", "market_closing", "poll_failure_bailout")
     print(f"[exit] reason={reason}; flattening {held} contracts")
+    log_event("exit_signal", reason=reason, held=held)
     flat = flatten(client, args.ticker, args.side, held, base_order_id, args.dry_run, aggressive)
     if flat and not args.dry_run:
         final_balance = client.balance_cents()
-        print(f"[done] flat. balance {balance}c -> {final_balance}c (net {final_balance - balance:+d}c incl. fees)")
+        net = final_balance - balance
+        print(f"[done] flat. balance {balance}c -> {final_balance}c (net {net:+d}c incl. fees)")
+        log_event("done", flat=True, net_cents=net)
+    else:
+        log_event("done", flat=flat, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
